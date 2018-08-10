@@ -5,7 +5,6 @@ const yargs = require('yargs')
 const {app} = require('electron')
 const path = require('path')
 const fs = require('fs-plus')
-const CSON = require('season')
 
 module.exports = function parseCommandLine (processArgs) {
   const options = yargs(processArgs).wrap(yargs.terminalWidth())
@@ -13,12 +12,17 @@ module.exports = function parseCommandLine (processArgs) {
   options.usage(
     dedent`Atom Editor v${version}
 
-    Usage: atom [options] [path ...]
+    Usage:
+      atom [options] [path ...]
+      atom file[:line[:column]]
 
     One or more paths to files or folders may be specified. If there is an
     existing Atom window that contains all of the given folders, the paths
     will be opened in that window. Otherwise, they will be opened in a new
     window.
+
+    A file may be opened at the desired line (and optionally column) by
+    appending the numbers right after the file name, e.g. \`atom file:5:8\`.
 
     Paths that start with \`atom://\` will be interpreted as URLs.
 
@@ -53,7 +57,6 @@ module.exports = function parseCommandLine (processArgs) {
     'When in test mode, waits until the specified time (in minutes) and kills the process (exit code: 130).'
   )
   options.alias('v', 'version').boolean('v').describe('v', 'Print the version information.')
-  options.alias('p', 'project').describe('p', 'Start Atom with a project specification file.')
   options.alias('w', 'wait').boolean('w').describe('w', 'Wait for window to be closed before returning.')
   options.alias('a', 'add').boolean('a').describe('add', 'Open path as a new project in last used window.')
   options.string('socket-path')
@@ -93,7 +96,6 @@ module.exports = function parseCommandLine (processArgs) {
   const benchmark = args['benchmark']
   const benchmarkTest = args['benchmark-test']
   const test = args['test']
-  const projectSpecificationFile = args['project']
   const mainProcess = args['main-process']
   const timeout = args['timeout']
   const newWindow = args['new-window']
@@ -128,7 +130,6 @@ module.exports = function parseCommandLine (processArgs) {
     }
   }
 
-  // Check to see if project flag is set, then add all paths from the .atomproject.
   if (args['resource-path']) {
     devMode = true
     devResourcePath = args['resource-path']
@@ -136,28 +137,6 @@ module.exports = function parseCommandLine (processArgs) {
 
   if (test) {
     devMode = true
-  }
-
-  let projectSpecification = {}
-  if (projectSpecificationFile) {
-    const readPath = path.isAbsolute(projectSpecificationFile)
-      ? projectSpecificationFile
-      : path.join(executedFrom, projectSpecificationFile)
-
-    const contents = Object.assign({}, readProjectSpecificationSync(readPath, executedFrom))
-    const pathToProjectFile = path.join(executedFrom, projectSpecificationFile)
-
-    const base = path.dirname(pathToProjectFile)
-    pathsToOpen.push(path.dirname(projectSpecificationFile))
-    const paths = (contents.paths == null)
-      ? undefined
-      : contents.paths.map(curPath => path.resolve(base, curPath))
-
-    projectSpecification = {
-      originPath: pathToProjectFile,
-      paths,
-      config: contents.config
-    }
   }
 
   if (devMode) {
@@ -178,7 +157,6 @@ module.exports = function parseCommandLine (processArgs) {
   devResourcePath = normalizeDriveLetterName(devResourcePath)
 
   return {
-    projectSpecification,
     resourcePath,
     devResourcePath,
     pathsToOpen,
@@ -202,18 +180,6 @@ module.exports = function parseCommandLine (processArgs) {
     benchmarkTest,
     env: process.env
   }
-}
-
-function readProjectSpecificationSync (filepath, executedFrom) {
-  let contents
-  try {
-    contents = CSON.readFileSync(filepath)
-  } catch (e) {
-    throw new Error('Unable to read supplied project specification file.')
-  }
-
-  contents.config = (contents.config == null) ? {} : contents.config
-  return contents
 }
 
 function normalizeDriveLetterName (filePath) {
